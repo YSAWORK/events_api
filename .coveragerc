@@ -1,0 +1,16 @@
+# .coveragerc
+[run]
+source = src
+omit =
+    */__init__.py
+    */tests/*
+    tests/*
+    conftest.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+precision = 2
+show_missing = True
