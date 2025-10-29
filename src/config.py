@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     TIMEZONE: str = "Europe/Kyiv"
     # metrics
     METRICS_HOST: str = "0.0.0.0"
-    METRICS_PORT: str = "8004"
+    METRICS_PORT: str = "8003"
     METRICS_PATH: str = "/metrics"
 
 

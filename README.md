@@ -71,7 +71,7 @@ robomate_take_home/
 │     ├─ dau_100k/
 │     │  └─ generate_events.py   # Генератор подій
 │     └─ run_benchmarks.py       # Імпорт + запит DAU +
-└─ .env.test                     # приклад тестового оточення
+└─ tests                         # Тести
 ```
 
 > **Базовий шлях API** визначається `get_settings().API_PREFIX` (типово — `"/api"`), далі модульні префікси: `/auth`, `/events`, `/stats`.

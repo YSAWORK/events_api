@@ -6,7 +6,7 @@ from datetime import datetime
 from types import SimpleNamespace
 
 # local imports
-import src.benchmarks.run_benchmarcks as mod
+import src.benchmarks.run_benchmarks as mod
 
 
 def test_benchmark_100k_dau(monkeypatch):

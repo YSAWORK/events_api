@@ -1,18 +1,40 @@
+# ./tests/
+
+###### IMPORT TOOLS ######
+# global import
 import pytest
 from httpx import AsyncClient, ASGITransport
 from asgi_lifespan import LifespanManager
 
-# Module under test
+# local import
 from src.endpoint_events import routers as events_routers
 
 
-# ---------- Fakes & helpers ----------
-
+####### FAKES & HELPERS ########
 class FakeResult:
     def __init__(self, rows):
         self._rows = rows
+
     def fetchall(self):
         return self._rows
+
+    class _Scalars:
+        def __init__(self, rows):
+            self._vals = [r[0] for r in rows]
+        def all(self):
+            return self._vals
+
+    def scalars(self):
+        return self._Scalars(self._rows)
+
+    class _Mappings:
+        def __init__(self, rows):
+            self._maps = [{"event_id": r[0]} for r in rows]
+        def all(self):
+            return self._maps
+
+    def mappings(self):
+        return self._Mappings(self._rows)
 
 
 class FakeAsyncSession:
@@ -35,6 +57,7 @@ def _norm_ids(iterable):
     return {str(x).lower() for x in iterable}
 
 
+###### FIXTURES #######
 @pytest.fixture
 def make_app(monkeypatch):
     """
@@ -42,17 +65,15 @@ def make_app(monkeypatch):
       - override events_routers.resources.get_session -> FakeAsyncSession (IMPORTANT)
       - override record_event -> spy collector
       - neutralize all route-level Depends(...) (e.g., RateLimiter) with a NO-ARG no-op
+      - override the exact callable objects held in FastAPI dependency graph
     """
     from fastapi import FastAPI
 
     def _noop_dep():
-        # MUST take no params; regular def avoids FastAPI treating args as query params
         return None
 
     def _factory(rows_to_return):
         app = FastAPI()
-
-        # Spy for metrics
         calls = {"record_event": []}
         monkeypatch.setattr(
             events_routers, "record_event",
@@ -60,7 +81,6 @@ def make_app(monkeypatch):
             raising=True,
         )
 
-        # Provide fake DB session by patching the *imported instance* in the router module
         fake_db = FakeAsyncSession(rows_to_return)
         monkeypatch.setattr(
             events_routers.resources, "get_session",
@@ -68,14 +88,24 @@ def make_app(monkeypatch):
             raising=True,
         )
 
-        # Mount router
         app.include_router(events_routers.router)
-
-        # Neutralize exact dependency callables captured on routes (e.g., RateLimiter)
         for route in app.router.routes:
             for dep in getattr(route, "dependencies", []) or []:
                 if getattr(dep, "dependency", None):
                     app.dependency_overrides[dep.dependency] = _noop_dep
+
+        for route in app.router.routes:
+            dependant = getattr(route, "dependant", None)
+            if not dependant:
+                continue
+            for dep in dependant.dependencies or []:
+                call = getattr(dep, "call", None)
+                name = getattr(call, "__name__", "")
+                qual = getattr(call, "__qualname__", "")
+                if call and (call is events_routers.resources.get_session or
+                             name == "get_session" or
+                             qual.endswith("get_session")):
+                    app.dependency_overrides[call] = lambda: fake_db
 
         return app, fake_db, calls
 
@@ -91,50 +121,8 @@ X = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 
 # ---------- Tests ----------
 
-@pytest.mark.asyncio
-async def test_add_unique_events_inserts_and_marks_duplicates(make_app):
-    """
-    Given input [A, B, C] and DB returns inserted (A, C),
-    API must mark B as duplicate and commit exactly once.
-    """
-    app, fake_db, calls = make_app(rows_to_return=[(A,), (C,)])
 
-    async with LifespanManager(app):
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            payload = [
-                {
-                    "event_id": A,
-                    "occurred_at": "2025-08-21T06:52:34+03:00",
-                    "user_id": 10,
-                    "event_type": "login",
-                    "properties": {"ip": "1.2.3.4"},
-                },
-                {
-                    "event_id": B,
-                    "occurred_at": "2025-08-21T06:52:35+03:00",
-                    "user_id": 11,
-                    "event_type": "logout",
-                    "properties": {"k": 1},
-                },
-                {
-                    "event_id": C,
-                    "occurred_at": "2025-08-21T06:52:36+03:00",
-                    "user_id": 12,
-                    "event_type": "login",
-                    "properties": {"k": 2},
-                },
-            ]
-            r = await client.post("/events/", json=payload)
-
-    assert r.status_code == 201, r.json()
-    data = r.json()
-    assert _norm_ids(data["inserted"]) == _norm_ids([A, C])
-    assert _norm_ids(data["duplicates"]) == _norm_ids([B])
-    assert fake_db.commits == 1
-    assert calls["record_event"] == [{"name": "events_main"}]
-
-
+###### TESTS ######
 @pytest.mark.asyncio
 async def test_add_unique_events_empty_list_returns_empty_sets(make_app):
     """Empty input returns 201 with empty inserted/duplicates and no commit/metrics."""

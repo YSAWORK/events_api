@@ -10,6 +10,33 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.routing import Mount
 
 
+###### ENSURE ENGINE DISPOSE ######
+def _ensure_engine_dispose(stub):
+    """
+    Ensure stub.engine has a dispose method that works whether called
+    synchronously or awaited. No changes to conftest.py required.
+    """
+    eng = getattr(stub, "engine", None)
+    if eng is None or hasattr(eng, "dispose"):
+        return
+
+    def _dispose():
+        try:
+            setattr(eng, "_disposed", True)
+        except Exception:
+            pass
+
+        class _AwaitableNoop:
+            def __await__(self):
+                if False:
+                    yield
+                return None
+        return _AwaitableNoop()
+
+    setattr(eng, "dispose", _dispose)
+
+
+###### TESTS ######
 def test_app_created(fresh_app_factory):
     """Check that the FastAPI app is created successfully."""
     app, _ = fresh_app_factory()
@@ -17,9 +44,9 @@ def test_app_created(fresh_app_factory):
 
 
 def test_root_redirect_in_debug(monkeypatch, fresh_app_factory):
-    """When DEBUG=1, root should redirect (302) or return 200."""
     monkeypatch.setenv("DEBUG", "1")
     app, stub = fresh_app_factory()
+    _ensure_engine_dispose(stub)  # ← ДОДАНО
     with TestClient(app) as client:
         r = client.get("/")
         assert r.status_code in (200, 302)
@@ -27,9 +54,9 @@ def test_root_redirect_in_debug(monkeypatch, fresh_app_factory):
 
 
 def test_root_status_when_debug_false(monkeypatch, fresh_app_factory):
-    """When DEBUG=0, root should return status ok."""
     monkeypatch.setenv("DEBUG", "0")
     app, stub = fresh_app_factory()
+    _ensure_engine_dispose(stub)  # ← ДОДАНО
     with TestClient(app) as client:
         r = client.get("/")
         assert r.status_code == 200
