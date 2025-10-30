@@ -1,17 +1,18 @@
 # tests/test_src/conftest.py
+
+###### IMPORT TOOLS ######
+# global imports
 import sys
 import importlib
 import pytest
 from fastapi_limiter import FastAPILimiter
 
 
+###### FIXTURES ######
 @pytest.fixture(scope="session")
 def patched_main_env(tmp_path_factory):
-    """
-    Session-scoped: вимикає реальні ресурси (БД/Redis), готує STATIC_DIR,
-    патчить FastAPILimiter та resources. ЖОДНОГО function-scoped monkeypatch тут.
-    """
-    mp = pytest.MonkeyPatch()            # <- НЕ фікстура, а клас
+    """Session-scoped fixture: sets environment variables and stubs resources for tests."""
+    mp = pytest.MonkeyPatch()
     mp.setenv("APP_ENV", "test")
     mp.setenv("UNIT_TESTS_ONLY", "1")
     mp.setenv("DISABLE_DB_FOR_TESTS", "1")
@@ -50,15 +51,12 @@ def patched_main_env(tmp_path_factory):
     try:
         yield stub
     finally:
-        mp.undo()  # важливо повернути середовище у норму
+        mp.undo()
 
 
 @pytest.fixture
 def fresh_app_factory(patched_main_env):
-    """
-    Function-scoped фабрика: очищає кеш імпорту та повертає (app, resources).
-    Можна попередньо виставити env через function-scoped `monkeypatch` у тесті.
-    """
+    """Function-scoped fixture: returns a factory that reloads the FastAPI app and resources for each test."""
     def _factory():
         for m in ["src.main", "src.config", "src.routers", "src.infrastructure.resources"]:
             sys.modules.pop(m, None)
