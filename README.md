@@ -1,4 +1,4 @@
-# Robomate Take‑Home (FastAPI)
+# Benchmark for events`s loader
 
 Це сервіс на **FastAPI** для інґесту подій (events) та розрахунку базової продукт‑аналітики (DAU, ТОП-івенти, когорти/ретеншн). Проєкт містить **авторизацію з JWT**, **PostgreSQL** (async SQLAlchemy), **Redis** (кеш токенів та rate‑limit), **Alembic** міграції, **Prometheus** метрики, CLI для **CSV‑імпорту** та **бенчмарк** на імпорт з CSV файлу 100k подій та підрахунку DAU.
 
